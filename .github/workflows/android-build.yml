@@ -1,1 +1,55 @@
+name: Build PhotoCraft PSD APK
 
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out build files
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Reassemble the PhotoCraft source archive
+        run: |
+          cat source-part-00 source-part-01 source-part-02 > photocraft-source.zip
+          mkdir source
+          unzip -q photocraft-source.zip -d source
+          echo "PROJECT_DIR=$GITHUB_WORKSPACE/source/photocraft-android-android-port" >> "$GITHUB_ENV"
+
+      - name: Set up Android SDK and NDK
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" "ndk;27.3.13750724"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.3.13750724" >> "$GITHUB_ENV"
+
+      - name: Set up Rust 1.95 for Android
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --target aarch64-linux-android
+          rustup default 1.95.0
+          rustc --version
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build APK
+        run: PROFILE=dev "$PROJECT_DIR/apps/photocraft-android/build.sh"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: photocraft-psd-step1-apk
+          path: source/photocraft-android-android-port/target/android/*.apk
+          if-no-files-found: error
+          retention-days: 7
